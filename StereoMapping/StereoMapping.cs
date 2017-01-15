@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 
 #if UNITY_5_3 || UNITY_5_3_OR_NEWER
@@ -55,11 +55,15 @@ namespace OpenCVForUnitySample
         /// </summary>
         Mat rgbaMat;
 
-		/// <summary>
-		/// The Captured Mat.
-		/// </summary>
-		public Mat capMat1;
-		public Mat capMat2;
+        /// <summary>
+        /// The Captured Mat.
+        /// </summary>
+        /*
+                public Mat capMat1 = new Mat ();
+                public Mat capMat2 = new Mat ();
+        */
+        Texture2D LeftTexture;
+        Texture2D RightTexture;
 
         /// <summary>
         /// The colors.
@@ -126,100 +130,98 @@ namespace OpenCVForUnitySample
 
 		private void processBlurring ()
 		{
+            /*
+            Texture2D LeftTexture = Resources.Load("tsukuba_l") as Texture2D;
+            Texture2D RightTexture = Resources.Load("tsukuba_r") as Texture2D;
+            */
+            double resize_ratio = 1;
 
-            Mat grayMat1 = new Mat ();
-			Mat grayMat2 = new Mat ();
-            Mat targetMat = new Mat();
-            Mat tmplMat = new Mat();
-            Mat matchMat = new Mat ();
-            int minDisparity;
-            int numDisparities;
-            int SADWindowSize;
+            Mat grayMat_l0 = new Mat(LeftTexture.height, LeftTexture.width, CvType.CV_8UC1);
+            Mat grayMat_r0 = new Mat(RightTexture.height, RightTexture.width, CvType.CV_8UC1);
+            Mat grayMat_l = new Mat((int)(grayMat_l0.height() / resize_ratio), (int)(grayMat_l0.width() / resize_ratio), CvType.CV_8UC1);
+            Mat grayMat_r = new Mat((int)(grayMat_r0.height() / resize_ratio), (int)(grayMat_r0.width() / resize_ratio), CvType.CV_8UC1);
+            Utils.texture2DToMat(LeftTexture, grayMat_l0);
+            Utils.texture2DToMat(RightTexture, grayMat_r0);
+            Size dsize = new Size(grayMat_l.height(), grayMat_l.width());
+
+            Imgproc.resize(grayMat_l0, grayMat_l, dsize);
+            Imgproc.resize(grayMat_r0, grayMat_r, dsize);
+
+            Mat disparity_data = new Mat (grayMat_l.rows(), grayMat_l.cols(), CvType.CV_16S);
+            Mat disparity_map = new Mat ();
+            Mat imgDisparity16S = new Mat(grayMat_l.rows(), grayMat_l.cols(), CvType.CV_16S);
+            Mat imgDisparity8U = new Mat(grayMat_l.rows(), grayMat_l.cols(), CvType.CV_8UC1);
 
             System.Collections.Generic.List<Mat> mv = new System.Collections.Generic.List<Mat> ();
-			System.Collections.Generic.List<Mat> mv2 = new System.Collections.Generic.List<Mat> ();
 
+            /*
             Imgproc.cvtColor(capMat1, grayMat1, Imgproc.COLOR_RGBA2GRAY);
             Imgproc.cvtColor(capMat2, grayMat2, Imgproc.COLOR_RGBA2GRAY);
+            */
+            double dmax = 0;
+            double dmin = 0;
 
-            int w_size = 100;
-			int compare_size = 20;
-			int c_row = 0;
-			int c_col = 0;
-
-            int m_height = grayMat1.height();
-            int m_width = grayMat1.width();
+            int m_height = grayMat_l.height();
+            int m_width = grayMat_l.width();
             float asp_ratio = ((float)m_height) / ((float)m_width);
 
             Point[,] maxPointVec = new Point[m_height, m_width];
             double[,] maxValueVec = new double[m_height, m_width];
 
-
-
-            Debug.Log ("asp_ratio*(m_height-w_size) = " + (asp_ratio * (m_height - w_size)));
+            Debug.Log("m_height = " + m_height);
+            Debug.Log("m_width = " + m_width);
             Core.MinMaxLocResult MatchResult = new Core.MinMaxLocResult();
 
             DateTime dt1 = DateTime.Now;
 
-            int window_size = 3;
-
             int minDisparity = 0;
-            int numDisparities = 32;
-            int blockSize = 3;
-            int P1 = 8 * 3 * window_size * window_size;
-            int P2 = 32 * 3 * window_size * window_size;
-            int disp12MaxDiff = 1;
+            int numDisparities = 16 * 4;
+            int blockSize = 21; // SADWindowSize
+            int P1 = 0;
+            int P2 = 0;
+            int disp12MaxDiff = 0;
             int preFilterCap = 0;
-            int uniquenessRatio = 10;
+            int uniquenessRatio = 0;
             int speckleWindowSize = 100;
-            int speckleRange = 32;
+            int speckleRange = 100;
+            int mode = 0;
 
-            //StereoSGBM.compute(grayMat1, grayMat2, matchMat);
+            StereoSGBM sbm = StereoSGBM.create(minDisparity, numDisparities, blockSize, P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio, speckleWindowSize, speckleRange, mode);
 
-            public static IntPtr addr;
-        //StereoMatcher stereoSolver = new StereoMatcher.compute();
-        StereoSGBM stereoSolver =  StereoSGBM.compute(grayMat1, grayMat2, matchMat);
+            //StereoBM sbm = StereoBM.create(64, 15);
+            sbm.compute(grayMat_l, grayMat_r, imgDisparity16S);
 
-        stereoSolver.compute(grayMat1, grayMat2, matchMat);
-
-            //    stereoSolver.Compute(left, right, disparityMap);
-            //    points = PointCollection.ReprojectImageTo3D(disparityMap, Q);
-
-            //Disparity
-            /*
-                        for (c_row = 0; c_row < 20; c_row++) {
-                            for (c_col = 0; c_col < 20;c_col++) {
-                                targetMat = new Mat(grayMat1, new OpenCVForUnity.Rect(0, 0, m_width - 1, (int)(2*(w_size * asp_ratio - 1))));
-                                tmplMat = new Mat(grayMat2, new OpenCVForUnity.Rect(0, 0, w_size - 1, (int)(w_size * asp_ratio - 1)));
-                                OpenCVForUnity.Imgproc.matchTemplate(targetMat, tmplMat, matchMat, Imgproc.TM_CCORR_NORMED);
-                                MatchResult = Core.minMaxLoc(matchMat);
-                                maxPointVec[c_row, c_col] = MatchResult.maxLoc;
-                                maxValueVec[c_row, c_col] = MatchResult.maxVal;
-                            }
-                        }
-            */
+            //normalize to CvType.CV_8U
+            Core.normalize(imgDisparity16S, imgDisparity8U, 0, 255, Core.NORM_MINMAX, CvType.CV_8U);
 
             DateTime dt2 = DateTime.Now;
             Debug.Log((dt2.Second - dt1.Second) + "秒");
 
-            Color32[] matchColor = new Color32[matchMat.width() * matchMat.height()];
+            Color32[] matchColor = new Color32[imgDisparity8U.width() * imgDisparity8U.height()];
+            short[] short_data = new short[1000];
 
-            float[] float_data = new float[10];
-            byte[] byte_data = new byte[10];
-
-            OpenCVForUnity.Core.split(matchMat,mv);
-			OpenCVForUnity.Core.split(tmplMat, mv2);
-
+            OpenCVForUnity.Core.split(imgDisparity16S, mv);
             // comment out to get an element of a matrix.
-            /*
-			Debug.Log ("element1=" + mv[0].get (3, 3, float_data));
-			Debug.Log ("element2=" + (byte)(float_data[9]*100));
-			Debug.Log ("element3=" + mv2[0].get (3, 3, byte_data));
-            */
+			Debug.Log ("element1=" + mv[0].get (3, 3, short_data));
+            Debug.Log("element2=" + (byte)(short_data[9] * 100));
+            Debug.Log("size of disparity mat =" + imgDisparity8U.size());
 
-			Texture2D CapTexture = new Texture2D (matchMat.width(), matchMat.height(), TextureFormat.RGBA32, false);
-			Utils.matToTexture2D ((matchMat*100), CapTexture, matchColor);
-			gameObject.GetComponent<Renderer>().material.mainTexture = CapTexture;
+            Core.MinMaxLocResult minmaxLoc = Core.minMaxLoc(imgDisparity8U);
+            dmax = minmaxLoc.maxVal;
+            dmin = minmaxLoc.minVal;
+
+            Texture2D CapTexture = new Texture2D(imgDisparity8U.width(), imgDisparity8U.height(), TextureFormat.RGBA32, false);
+            Utils.matToTexture2D(imgDisparity8U+grayMat_l/10, CapTexture);
+            gameObject.GetComponent<Renderer>().material.mainTexture = CapTexture;
+
+            /*
+            Core.fillConvexPoly(Mat     img,
+MatOfPoint  points,
+Scalar  color,
+int     lineType,
+int     shift
+)*/
+
 
             /*
 			for c_row=1:r_size-w_size
@@ -300,18 +302,18 @@ namespace OpenCVForUnitySample
 			Utils.matToTexture2D (rgbaMat, CapTexture, colors);
 			switch (captureNum) {
 			case 0:
-				capMat1 = rgbaMat;
+				LeftTexture = CapTexture;
 				GameObject.Find("Wipe1").GetComponent<Renderer>().material.mainTexture = CapTexture;
 				captureNum++;
 				break;
 			case 1:
-				capMat2 = rgbaMat;
+                RightTexture = CapTexture;
 				GameObject.Find("Wipe2").GetComponent<Renderer>().material.mainTexture = CapTexture;
 				captureNum++;
 				captureDone = true;
 				break;
 			case 2:
-				capMat1 = rgbaMat;
+                LeftTexture = CapTexture;
 				GameObject.Find("Wipe1").GetComponent<Renderer>().material.mainTexture = CapTexture;
 				captureNum = 1;
 				break;
